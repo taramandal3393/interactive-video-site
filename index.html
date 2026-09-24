@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Interactive Branching Video Player</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    background: #0a0a0f;
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(99,102,241,0.12), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(236,72,153,0.10), transparent 40%);
+    min-height: 100vh;
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #0a0a0f; }
+  ::-webkit-scrollbar-thumb { background: #2e2e3a; border-radius: 8px; }
+
+  .overlay-panel {
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(0.94) translateY(8px);
+    transition: opacity 0.35s ease, transform 0.35s ease, visibility 0.35s;
+  }
+  .overlay-panel.active {
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1) translateY(0);
+  }
+
+  @keyframes pulseRing {
+    0%   { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.55); }
+    70%  { box-shadow: 0 0 0 16px rgba(236, 72, 153, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0); }
+  }
+  .pulse-badge { animation: pulseRing 2s infinite; }
+
+  @keyframes bounceIn {
+    0% { transform: scale(0.3); opacity: 0; }
+    60% { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+  .bounce-in { animation: bounceIn 0.5s ease forwards; }
+
+  .cart-bump { animation: cartBump 0.4s ease; }
+  @keyframes cartBump {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.35); }
+    100% { transform: scale(1); }
+  }
+
+  .fade-slide-enter {
+    animation: fadeSlideIn 0.4s ease forwards;
+  }
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .progress-fill {
+    transition: width 0.15s linear;
+  }
+
+  .quiz-option {
+    transition: all 0.2s ease;
+  }
+  .quiz-option:disabled {
+    cursor: not-allowed;
+  }
+</style>
+</head>
+<body class="text-gray-100 font-sans antialiased">
+
+<!-- ===================== NAVBAR ===================== -->
+<header class="sticky top-0 z-50 backdrop-blur-xl bg-gray-950/80 border-b border-white/10">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+
+      <!-- Logo -->
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+          <i data-lucide="play" class="w-5 h-5 text-white fill-white"></i>
+        </div>
+        <span class="font-bold text-lg tracking-tight text-white">Branch<span class="text-indigo-400">Play</span></span>
+      </div>
+
+      <!-- Nav Links (desktop) -->
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-gray-300">
+        <a href="#" class="hover:text-white transition-colors">Home</a>
+        <a href="#" class="hover:text-white transition-colors">Experiences</a>
+        <a href="#" class="hover:text-white transition-colors">Shop</a>
+        <a href="#" class="hover:text-white transition-colors">About</a>
+      </nav>
+
+      <!-- Right side: Cart + Mobile menu button -->
+      <div class="flex items-center gap-3">
+        <button id="cartBtn" class="relative flex items-center justify-center w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
+          <i data-lucide="shopping-cart" class="w-5 h-5 text-gray-200"></i>
+          <span id="cartCount" class="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-pink-500 text-white text-[11px] font-bold flex items-center justify-center border-2 border-gray-950">0</span>
+        </button>
+        <button id="mobileMenuBtn" class="md:hidden flex items-center justify-center w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
+          <i data-lucide="menu" class="w-5 h-5 text-gray-200"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Nav -->
+    <div id="mobileMenu" class="hidden md:hidden pb-4 flex flex-col gap-1 text-sm font-medium text-gray-300">
+      <a href="#" class="px-2 py-2 rounded-lg hover:bg-white/5 hover:text-white transition-colors">Home</a>
+      <a href="#" class="px-2 py-2 rounded-lg hover:bg-white/5 hover:text-white transition-colors">Experiences</a>
+      <a href="#" class="px-2 py-2 rounded-lg hover:bg-white/5 hover:text-white transition-colors">Shop</a>
+      <a href="#" class="px-2 py-2 rounded-lg hover:bg-white/5 hover:text-white transition-colors">About</a>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== HERO / INTRO ===================== -->
+<section class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-4 text-center">
+  <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold tracking-wide uppercase mb-4">
+    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+    Interactive Experience
+  </span>
+  <h1 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-3">Choose Your Own Adventure</h1>
+  <p class="text-gray-400 text-sm sm:text-base max-w-xl mx-auto">Watch the intro, then decide where the story goes. Your choices unlock shoppable products and quick knowledge checks along the way.</p>
+</section>
+
+<!-- ===================== VIDEO THEATER ===================== -->
+<main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-6">
+  <div class="relative rounded-2xl border border-white/10 shadow-2xl shadow-black/60 overflow-hidden bg-black">
+
+    <!-- Video Container -->
+    <div id="videoWrapper" class="relative w-full aspect-video bg-black">
+      <video
+        id="mainVideo"
+        class="w-full h-full object-cover"
+        playsinline
+        muted
+        src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4">
+        Your browser does not support the video tag.
+      </video>
+
+      <!-- Custom Play Button (initial) -->
+      <button id="initialPlayBtn" class="absolute inset-0 flex items-center justify-center bg-black/40 hover:bg-black/50 transition-colors group">
+        <div class="w-20 h-20 rounded-full bg-white/10 backdrop-blur-md border border-white/30 flex items-center justify-center group-hover:scale-110 group-active:scale-95 transition-transform shadow-xl">
+          <i data-lucide="play" class="w-8 h-8 text-white fill-white ml-1"></i>
+        </div>
+      </button>
+
+      <!-- ============ OVERLAY 1: PATH CHOICE ============ -->
+      <div id="overlay-choice" class="overlay-panel absolute inset-0 z-20 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div class="w-full max-w-sm bg-gray-900/90 border border-white/15 rounded-2xl p-5 sm:p-6 shadow-2xl">
+          <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="git-branch" class="w-4 h-4 text-indigo-400"></i>
+            <span class="text-xs font-semibold uppercase tracking-wider text-indigo-400">Decision Point</span>
+          </div>
+          <h3 class="text-lg sm:text-xl font-bold text-white mb-4">Choose Your Path</h3>
+          <div class="flex flex-col gap-3">
+            <button data-path="A" class="choice-btn group flex items-center justify-between gap-3 w-full px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm shadow-lg shadow-indigo-500/20 transition-all active:scale-[0.98]">
+              <span class="flex items-center gap-2"><i data-lucide="shopping-bag" class="w-4 h-4"></i> Product Showcase</span>
+              <i data-lucide="arrow-right" class="w-4 h-4 opacity-70 group-hover:translate-x-0.5 transition-transform"></i>
+            </button>
+            <button data-path="B" class="choice-btn group flex items-center justify-between gap-3 w-full px-4 py-3 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 text-white font-semibold text-sm shadow-lg shadow-pink-500/20 transition-all active:scale-[0.98]">
+              <span class="flex items-center gap-2"><i data-lucide="brain" class="w-4 h-4"></i> Interactive Quiz</span>
+              <i data-lucide="arrow-right" class="w-4 h-4 opacity-70 group-hover:translate-x-0.5 transition-transform"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ OVERLAY 2: SHOPPABLE HOTSPOT ============ -->
+      <div id="overlay-hotspot" class="overlay-panel absolute inset-0 z-20 flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
+        <div class="pulse-badge w-full max-w-sm bg-gray-900/95 border border-white/15 rounded-2xl overflow-hidden shadow-2xl">
+          <div class="flex items-center justify-between px-4 pt-3">
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-pink-500/15 border border-pink-500/30 text-pink-300 text-[11px] font-bold uppercase tracking-wide">
+              <i data-lucide="tag" class="w-3 h-3"></i> Featured Product
+            </span>
+            <button id="closeHotspot" class="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="flex gap-4 p-4 items-center">
+            <img src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=200&q=80" alt="Wireless Headphones" class="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-xl border border-white/10 flex-shrink-0" />
+            <div class="flex-1 min-w-0">
+              <h4 class="font-bold text-white text-sm sm:text-base leading-tight">Studio Wireless Headphones</h4>
+              <p class="text-xs text-gray-400 mt-1 line-clamp-2">Premium noise-cancelling comfort, 40hr battery life.</p>
+              <div class="flex items-center gap-2 mt-2">
+                <span class="text-lg font-extrabold text-white">$49.99</span>
+                <span class="text-xs text-gray-500 line-through">$79.99</span>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 pb-4">
+            <button id="addToCartBtn" class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all active:scale-[0.98]">
+              <i data-lucide="shopping-cart" class="w-4 h-4"></i> Add to Cart
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ OVERLAY 3: KNOWLEDGE CHECK QUIZ ============ -->
+      <div id="overlay-quiz" class="overlay-panel absolute inset-0 z-20 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div class="w-full max-w-sm bg-gray-900/95 border border-white/15 rounded-2xl p-5 sm:p-6 shadow-2xl">
+          <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="help-circle" class="w-4 h-4 text-amber-400"></i>
+            <span class="text-xs font-semibold uppercase tracking-wider text-amber-400">Knowledge Check</span>
+          </div>
+          <h3 class="text-base sm:text-lg font-bold text-white mb-4">Which flower is famously known as the symbol of love?</h3>
+
+          <div id="quizOptions" class="flex flex-col gap-2.5 mb-2">
+            <button data-correct="false" class="quiz-option flex items-center justify-between w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-100 text-sm font-medium text-left transition-all active:scale-[0.98]">
+              <span>Sunflower</span>
+              <i data-lucide="circle" class="w-4 h-4 opacity-0 icon-slot"></i>
+            </button>
+            <button data-correct="true" class="quiz-option flex items-center justify-between w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-100 text-sm font-medium text-left transition-all active:scale-[0.98]">
+              <span>Rose</span>
+              <i data-lucide="circle" class="w-4 h-4 opacity-0 icon-slot"></i>
+            </button>
+            <button data-correct="false" class="quiz-option flex items-center justify-between w-full px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-100 text-sm font-medium text-left transition-all active:scale-[0.98]">
+              <span>Tulip</span>
+              <i data-lucide="circle" class="w-4 h-4 opacity-0 icon-slot"></i>
+            </button>
+          </div>
+
+          <p id="quizFeedback" class="hidden text-sm font-semibold mb-3"></p>
+
+          <button id="quizContinueBtn" class="hidden w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all active:scale-[0.98]">
+            Continue <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Cart confirmation toast (inside player) -->
+      <div id="cartToast" class="fade-slide-enter hidden absolute top-3 right-3 z-30 flex items-center gap-2 bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-xl">
+        <i data-lucide="check-circle-2" class="w-4 h-4"></i> Added to cart!
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="h-1 w-full bg-white/5">
+      <div id="progressBar" class="progress-fill h-full bg-gradient-to-r from-indigo-500 to-pink-500" style="width:0%"></div>
+    </div>
+
+    <!-- Player footer controls -->
+    <div class="flex items-center justify-between px-4 py-3 bg-gray-950/80 border-t border-white/5">
+      <div class="flex items-center gap-3 text-xs text-gray-400">
+        <button id="playPauseBtn" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white transition-colors">
+          <i data-lucide="play" class="w-4 h-4"></i>
+        </button>
+        <span id="timeDisplay">0:00 / 0:00</span>
+      </div>
+      <div id="pathBadge" class="hidden items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-semibold text-gray-300">
+        <i data-lucide="route" class="w-3 h-3"></i>
+        <span id="pathBadgeText">Path A</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info strip below player -->
+  <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div class="rounded-xl bg-white/5 border border-white/10 p-4 flex items-start gap-3">
+      <i data-lucide="git-branch" class="w-5 h-5 text-indigo-400 mt-0.5"></i>
+      <div>
+        <p class="text-sm font-semibold text-white">Branching Logic</p>
+        <p class="text-xs text-gray-400 mt-0.5">Your choices reshape the timeline live.</p>
+      </div>
+    </div>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-4 flex items-start gap-3">
+      <i data-lucide="shopping-bag" class="w-5 h-5 text-pink-400 mt-0.5"></i>
+      <div>
+        <p class="text-sm font-semibold text-white">Shoppable Hotspots</p>
+        <p class="text-xs text-gray-400 mt-0.5">Buy featured products without leaving the video.</p>
+      </div>
+    </div>
+    <div class="rounded-xl bg-white/5 border border-white/10 p-4 flex items-start gap-3">
+      <i data-lucide="brain" class="w-5 h-5 text-amber-400 mt-0.5"></i>
+      <div>
+        <p class="text-sm font-semibold text-white">In-Video Quizzes</p>
+        <p class="text-xs text-gray-400 mt-0.5">Test your knowledge as the story unfolds.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-xs text-gray-600 border-t border-white/5 mt-6">
+  Built with vanilla JS, Tailwind CSS &amp; Lucide Icons — deployed on Netlify.
+</footer>
+
+<script>
+  // Initialize icons
+  lucide.createIcons();
+
+  // ===== Element refs =====
+  const video = document.getElementById('mainVideo');
+  const initialPlayBtn = document.getElementById('initialPlayBtn');
+  const playPauseBtn = document.getElementById('playPauseBtn');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const progressBar = document.getElementById('progressBar');
+
+  const overlayChoice = document.getElementById('overlay-choice');
+  const overlayHotspot = document.getElementById('overlay-hotspot');
+  const overlayQuiz = document.getElementById('overlay-quiz');
+
+  const cartCountEl = document.getElementById('cartCount');
+  const cartBtn = document.getElementById('cartBtn');
+  const cartToast = document.getElementById('cartToast');
+  const addToCartBtn = document.getElementById('addToCartBtn');
+  const closeHotspot = document.getElementById('closeHotspot');
+
+  const quizOptions = document.querySelectorAll('.quiz-option');
+  const quizFeedback = document.getElementById('quizFeedback');
+  const quizContinueBtn = document.getElementById('quizContinueBtn');
+
+  const pathBadge = document.getElementById('pathBadge');
+  const pathBadgeText = document.getElementById('pathBadgeText');
+
+  const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  const mobileMenu = document.getElementById('mobileMenu');
+
+  // ===== Application State =====
+  const state = {
+    cartCount: 0,
+    chosenPath: null,      // 'A' or 'B'
+    triggered: {
+      choice: false,
+      hotspot: false,
+      quiz: false
+    },
+    activeOverlay: null
+  };
+
+  // Timestamp thresholds (seconds)
+  const T_CHOICE = 5;
+  const T_HOTSPOT = 12;
+  const T_QUIZ = 20;
+
+  // ===== Helpers =====
+  function formatTime(sec) {
+    if (!isFinite(sec) || isNaN(sec)) return '0:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+
+  function showOverlay(el) {
+    // Hide any currently active overlay first
+    [overlayChoice, overlayHotspot, overlayQuiz].forEach(o => o.classList.remove('active'));
+    el.classList.add('active');
+    state.activeOverlay = el;
+  }
+
+  function hideOverlay(el) {
+    el.classList.remove('active');
+    if (state.activeOverlay === el) state.activeOverlay = null;
+  }
+
+  function pauseAndShow(el) {
+    video.pause();
+    updatePlayIcon();
+    showOverlay(el);
+  }
+
+  function resumePlayback() {
+    video.play().catch(() => {});
+    updatePlayIcon();
+  }
+
+  function updatePlayIcon() {
+    const icon = video.paused ? 'play' : 'pause';
+    playPauseBtn.innerHTML = `<i data-lucide="${icon}" class="w-4 h-4"></i>`;
+    lucide.createIcons();
+  }
+
+  // ===== Initial Play Button =====
+  initialPlayBtn.addEventListener('click', () => {
+    video.play().then(() => {
+      video.muted = false;
+    }).catch(() => {
+      // Autoplay-with-sound blocked; keep muted and try again
+      video.muted = true;
+      video.play().catch(() => {});
+    });
+    initialPlayBtn.classList.add('hidden');
+    updatePlayIcon();
+  });
+
+  // ===== Player Controls =====
+  playPauseBtn.addEventListener('click', () => {
+    if (video.paused) {
+      resumePlayback();
+    } else {
+      video.pause();
+      updatePlayIcon();
+    }
+  });
+
+  video.addEventListener('play', updatePlayIcon);
+  video.addEventListener('pause', updatePlayIcon);
+
+  video.addEventListener('loadedmetadata', () => {
+    timeDisplay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+  });
+
+  // ===== Core Branching Engine: timeupdate listener =====
+  video.addEventListener('timeupdate', () => {
+    const t = video.currentTime;
+    timeDisplay.textContent = `${formatTime(t)} / ${formatTime(video.duration)}`;
+
+    if (video.duration) {
+      progressBar.style.width = `${(t / video.duration) * 100}%`;
+    }
+
+    // 1) Decision point at 0:05
+    if (!state.triggered.choice && t >= T_CHOICE) {
+      state.triggered.choice = true;
+      pauseAndShow(overlayChoice);
+      return;
+    }
+
+    // 2) Shoppable hotspot at 0:12 (only on Path A)
+    if (state.chosenPath === 'A' && !state.triggered.hotspot && t >= T_HOTSPOT) {
+      state.triggered.hotspot = true;
+      pauseAndShow(overlayHotspot);
+      return;
+    }
+
+    // 3) Knowledge check quiz at 0:20 (only on Path B)
+    if (state.chosenPath === 'B' && !state.triggered.quiz && t >= T_QUIZ) {
+      state.triggered.quiz = true;
+      pauseAndShow(overlayQuiz);
+      return;
+    }
+  });
+
+  // ===== Overlay 1: Path Choice buttons =====
+  document.querySelectorAll('.choice-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const path = btn.getAttribute('data-path');
+      state.chosenPath = path;
+
+      pathBadgeText.textContent = `Path ${path}`;
+      pathBadge.classList.remove('hidden');
+      pathBadge.classList.add('flex');
+
+      hideOverlay(overlayChoice);
+
+      if (path === 'A') {
+        video.currentTime = 6;
+      } else {
+        video.currentTime = 15;
+      }
+      resumePlayback();
+    });
+  });
+
+  // ===== Overlay 2: Shoppable Hotspot =====
+  addToCartBtn.addEventListener('click', () => {
+    state.cartCount += 1;
+    cartCountEl.textContent = state.cartCount;
+    cartCountEl.classList.remove('cart-bump');
+    void cartCountEl.offsetWidth; // reflow to restart animation
+    cartCountEl.classList.add('cart-bump');
+
+    // Show toast
+    cartToast.classList.remove('hidden');
+    cartToast.classList.remove('fade-slide-enter');
+    void cartToast.offsetWidth;
+    cartToast.classList.add('fade-slide-enter');
+    setTimeout(() => cartToast.classList.add('hidden'), 2200);
+
+    hideOverlay(overlayHotspot);
+    resumePlayback();
+  });
+
+  closeHotspot.addEventListener('click', () => {
+    hideOverlay(overlayHotspot);
+    resumePlayback();
+  });
+
+  // ===== Overlay 3: Knowledge Check Quiz =====
+  quizOptions.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const isCorrect = btn.getAttribute('data-correct') === 'true';
+
+      // Lock all options after an answer is selected
+      quizOptions.forEach(b => (b.disabled = true));
+
+      if (isCorrect) {
+        btn.classList.remove('bg-white/5', 'border-white/10');
+        btn.classList.add('bg-emerald-500/20', 'border-emerald-500', 'text-emerald-300');
+        const slot = btn.querySelector('.icon-slot');
+        slot.setAttribute('data-lucide', 'check-circle-2');
+        slot.classList.remove('opacity-0');
+        slot.classList.add('text-emerald-400');
+
+        quizFeedback.textContent = 'Correct! Roses have long symbolized love and passion.';
+        quizFeedback.classList.remove('hidden', 'text-red-400');
+        quizFeedback.classList.add('text-emerald-400');
+
+        quizContinueBtn.classList.remove('hidden');
+      } else {
+        btn.classList.remove('bg-white/5', 'border-white/10');
+        btn.classList.add('bg-red-500/20', 'border-red-500', 'text-red-300');
+        const slot = btn.querySelector('.icon-slot');
+        slot.setAttribute('data-lucide', 'x-circle');
+        slot.classList.remove('opacity-0');
+        slot.classList.add('text-red-400');
+
+        // Reveal the correct answer too
+        quizOptions.forEach(b => {
+          if (b.getAttribute('data-correct') === 'true') {
+            b.classList.remove('bg-white/5', 'border-white/10');
+            b.classList.add('bg-emerald-500/20', 'border-emerald-500', 'text-emerald-300');
+            const s = b.querySelector('.icon-slot');
+            s.setAttribute('data-lucide', 'check-circle-2');
+            s.classList.remove('opacity-0');
+            s.classList.add('text-emerald-400');
+          }
+        });
+
+        quizFeedback.textContent = 'Not quite — the correct answer is highlighted above.';
+        quizFeedback.classList.remove('hidden', 'text-emerald-400');
+        quizFeedback.classList.add('text-red-400');
+
+        quizContinueBtn.classList.remove('hidden');
+      }
+
+      lucide.createIcons();
+    });
+  });
+
+  quizContinueBtn.addEventListener('click', () => {
+    hideOverlay(overlayQuiz);
+    resumePlayback();
+  });
+
+  // ===== Cart icon micro-interaction =====
+  cartBtn.addEventListener('click', () => {
+    cartBtn.classList.remove('cart-bump');
+    void cartBtn.offsetWidth;
+    cartBtn.classList.add('cart-bump');
+  });
+
+  // ===== Mobile menu toggle =====
+  mobileMenuBtn.addEventListener('click', () => {
+    mobileMenu.classList.toggle('hidden');
+    const icon = mobileMenu.classList.contains('hidden') ? 'menu' : 'x';
+    mobileMenuBtn.innerHTML = `<i data-lucide="${icon}" class="w-5 h-5 text-gray-200"></i>`;
+    lucide.createIcons();
+  });
+
+  // ===== Prevent context menu / download affordances on video for a cleaner demo =====
+  video.addEventListener('contextmenu', (e) => e.preventDefault());
+</script>
+
+</body>
+</html>
